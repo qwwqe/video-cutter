@@ -174,7 +174,8 @@ func cutClip(
 		"-ss", fmt.Sprintf("%d", start),
 		"-to", fmt.Sprintf("%d", end),
 		"-i", inputFilename,
-		"-c", "copy",
+		"-c:v", "copy",
+		"-c:a", "aac",
 		cutOutputPath,
 	)
 
