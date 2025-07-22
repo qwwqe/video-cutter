@@ -14,6 +14,8 @@ func main() {
 	switch os.Args[1] {
 	case "edl":
 		command = GenerateRandomEDL
+	case "cover":
+		command = GenerateRandomCoverImage
 	}
 
 	if command == nil {
@@ -31,6 +33,6 @@ func main() {
 
 func printUsageAndQuit() {
 	fmt.Println("Usage: vc <command> [flags]")
-	fmt.Println("Valid commands: edl")
+	fmt.Println("Valid commands: edl cover")
 	os.Exit(1)
 }
