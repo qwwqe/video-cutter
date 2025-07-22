@@ -4,12 +4,14 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"math/rand"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func main() {
@@ -24,9 +26,11 @@ func main() {
 		panic("Output file already exists")
 	}
 
+	outputBase := strings.TrimSuffix(*outputFilePath, filepath.Ext(*outputFilePath))
+
 	edlOutputFilePath := fmt.Sprintf(
 		"%s.edl",
-		strings.TrimSuffix(*outputFilePath, filepath.Ext(*outputFilePath)),
+		outputBase,
 	)
 
 	edlOutputFile, err := os.OpenFile(edlOutputFilePath, os.O_WRONLY|os.O_CREATE, 0644)
@@ -36,6 +40,27 @@ func main() {
 	defer edlOutputFile.Close()
 
 	if _, err = fmt.Fprintln(edlOutputFile, "# mpv EDL v0"); err != nil {
+		panic(err)
+	}
+
+	cmxOutputFilePath := fmt.Sprintf(
+		"%s.cmx.edl",
+		outputBase,
+	)
+
+	cmxOutputFile, err := os.OpenFile(cmxOutputFilePath, os.O_WRONLY|os.O_CREATE, 0644)
+	if err != nil {
+		panic(err)
+	}
+	defer cmxOutputFile.Close()
+
+	if _, err = fmt.Fprintf(
+		cmxOutputFile,
+		""+
+			"TITLE: %s\n"+
+			"FCM: NON-DROP FRAME\n\n",
+		outputBase,
+	); err != nil {
 		panic(err)
 	}
 
@@ -54,6 +79,7 @@ func main() {
 	defer concatFile.Close()
 
 	cutNumber := 0
+	totalOffsetInSeconds := 0
 	for _, filename := range filenames {
 		decimalSecondsString, err := exec.Command(
 			"ffprobe", "-v", "error",
@@ -73,7 +99,10 @@ func main() {
 		videoDurationInSeconds := int(secondsFloat)
 
 		cutStart := 0
-		cutEnd := *minimumShotTimeInSeconds + 1 + rand.Intn(*maximumShotTimeInSeconds-*minimumShotTimeInSeconds)
+		cutEnd := int(math.Min(
+			float64(*minimumShotTimeInSeconds+1+rand.Intn(*maximumShotTimeInSeconds-*minimumShotTimeInSeconds)),
+			float64(videoDurationInSeconds),
+		))
 		cutsForFile := 0
 		maxCuts := 1 + rand.Intn(*maximumCutsPerFile)
 		for cutStart < videoDurationInSeconds && cutsForFile < maxCuts {
@@ -81,12 +110,15 @@ func main() {
 				filename,
 				cutStart,
 				cutEnd,
+				totalOffsetInSeconds,
 				cutNumber,
 				tempDir,
 				concatFile,
 				edlOutputFile,
+				cmxOutputFile,
 			)
 
+			totalOffsetInSeconds += cutEnd - cutStart
 			cutStart = cutEnd + *maximumShotTimeInSeconds
 			cutEnd = cutStart + 1 + rand.Intn(*maximumShotTimeInSeconds-*minimumShotTimeInSeconds)
 			cutsForFile++
@@ -114,10 +146,12 @@ func cutClip(
 	inputFilename string,
 	start int,
 	end int,
+	clipOffset int,
 	clipNumber int,
 	tempDirPath string,
 	concatFile io.Writer,
 	edlOutputFile io.Writer,
+	cmxOutputFile io.Writer,
 ) {
 	cutOutputFile := fmt.Sprintf("%.04d-cut.mp4", clipNumber)
 	cutOutputPath := filepath.Join(tempDirPath, cutOutputFile)
@@ -142,7 +176,46 @@ func cutClip(
 		panic(err)
 	}
 
+	if _, err := fmt.Fprintf(
+		cmxOutputFile,
+		""+
+			"%s\n"+
+			"%s\n"+
+			"* FROM CLIP NAME: %s\n\n",
+		formatEdlLine(clipNumber+1, start, end, clipOffset, true),
+		formatEdlLine(clipNumber+1, start, end, clipOffset, false),
+		filepath.Base(inputFilename),
+	); err != nil {
+		panic(err)
+	}
+
 	if _, err := fmt.Fprintf(concatFile, "file %s\n", cutOutputFile); err != nil {
 		panic(err)
 	}
+}
+
+func formatTimecodeFromSeconds(seconds int) string {
+	d := time.Duration(seconds) * time.Second
+	h := int(d.Hours()) % 100
+	m := int(d.Minutes()) % 60
+	s := int(d.Seconds()) % 60
+
+	return fmt.Sprintf("%.02d:%.02d:%.02d:01", h, m, s)
+}
+
+func formatEdlLine(clipNumber int, clipStart int, clipEnd int, totalOffset int, isVideo bool) string {
+	mediaType := "V"
+	if !isVideo {
+		mediaType = "A"
+	}
+
+	return fmt.Sprintf(
+		"%.03d AX %s C %s %s %s %s",
+		clipNumber,
+		mediaType,
+		formatTimecodeFromSeconds(clipStart),
+		formatTimecodeFromSeconds(clipEnd),
+		formatTimecodeFromSeconds(totalOffset),
+		formatTimecodeFromSeconds(totalOffset+(clipEnd-clipStart)),
+	)
 }
