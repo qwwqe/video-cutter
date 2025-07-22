@@ -7,10 +7,7 @@ import (
 	"math"
 	"math/rand"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strconv"
-	"strings"
 	"time"
 )
 
@@ -122,24 +119,4 @@ func formatEdlEdit(clipNumber int, start int, end int, offset int, filename stri
 		formatEdlLine(clipNumber, start, end, offset, false),
 		filepath.Base(filename),
 	)
-}
-
-func getVideoLengthInSeconds(filename string) (int, error) {
-	secondsBytes, err := exec.Command(
-		"ffprobe", "-v", "error",
-		"-show_entries", "format=duration",
-		"-of", "default=noprint_wrappers=1:nokey=1",
-		filename,
-	).Output()
-
-	if err != nil {
-		return 0, err
-	}
-
-	seconds, err := strconv.ParseFloat(strings.TrimSpace(string(secondsBytes)), 64)
-	if err != nil {
-		return 0, err
-	}
-
-	return int(seconds), nil
 }
