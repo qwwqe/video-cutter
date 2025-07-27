@@ -18,6 +18,7 @@ func GenerateRandomEDL(args []string) error {
 	maximumShotLength := flagSet.Int("n", 20, "maximum length of any shot in seconds")
 	maximumCutsPerFile := flagSet.Int("f", 3, "maximum cuts taken for each file")
 	outputFilePath := flagSet.String("o", "output.edl", "output file path")
+	mpvOutputFilePath := flagSet.String("p", "", "mpv output file path")
 
 	if err := flagSet.Parse(args); err != nil {
 		return err
@@ -46,6 +47,18 @@ func GenerateRandomEDL(args []string) error {
 		return err
 	}
 
+	var mpvOutputFile *os.File
+	if *mpvOutputFilePath != "" {
+		if mpvOutputFile, err = os.OpenFile(*mpvOutputFilePath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644); err != nil {
+			return err
+		}
+		defer mpvOutputFile.Close()
+
+		if _, err = fmt.Fprintln(mpvOutputFile, "# mpv EDL v0"); err != nil {
+			return err
+		}
+	}
+
 	outputOffset := 0
 	clipNumber := 0
 	for _, filename := range filenames {
@@ -70,6 +83,12 @@ func GenerateRandomEDL(args []string) error {
 
 			if err != nil {
 				return err
+			}
+
+			if mpvOutputFile != nil {
+				if _, err = fmt.Fprintf(mpvOutputFile, "%s,%d,%d\n", filename, cutStart, cutEnd); err != nil {
+					return err
+				}
 			}
 
 			outputOffset += cutEnd - cutStart
